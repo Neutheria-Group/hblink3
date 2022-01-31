@@ -113,6 +113,12 @@ final_packet = ''
 hdr_type = ''
 btf = -1
 
+def emergency_received(callsign, user_agent):
+    print("[CSBK] EMERGENCY : From " + callsign + " (radio type: " + user_agent  + ")")
+
+def sms_received(callsign, user_agent, message):
+    print("[CSBK] SMS : From " + callsign + " Content: " + message + " (radio_type: " + user_agent  + ")")
+
 def decode_full(_data):
     binlc = bitarray(endian='big')
     binlc.extend([_data[136],_data[121],_data[106],_data[91], _data[76], _data[61], _data[46], _data[31]])
@@ -354,20 +360,25 @@ class HBSYSTEM(DatagramProtocol):
     def dmrd_received(self, _peer_id, _rf_src, _dst_id, _seq, _slot, _call_type, _frame_type, _dtype_vseq, _stream_id, _data):
         global n_packet_assembly, hdr_type
         call_type = "group"
+
         if type(_seq) is bytes:
             pckt_seq = int.from_bytes(_seq, 'big')
         else:
             pckt_seq = _seq
+
         if call_type == call_type or (_call_type == 'vcsbk' and pckt_seq > 3 and call_type != 'unit') or (_call_type == 'group' and pckt_seq > 3 and call_type != 'unit') or (_call_type == 'group' and pckt_seq > 3 and call_type == 'both') or (_call_type == 'vcsbk' and pckt_seq > 3 and call_type == 'both') or (_call_type == 'unit' and pckt_seq > 3 and call_type == 'both'): #int.from_bytes(_seq, 'big') > 3 ):
+
             global packet_assembly, btf, hdr_start
+
+            # Emergency calls detection
             if _call_type == "vcsbk":
                 if _data[20] == 67 and _data[22] == 68 :
-                    #print("--- PROBABLE EMERGENCY DETECTED  ---")
                     if (_data[21] == 54 or _data[21] == 82):
-                      print("--- EMERGENCY DETECTED (MOTOROLA) ---")
+                      emergency_received(str(int_id(_rf_src)), "MOTOROLA")
                     if (_data[21] == 94 or _data[21] == 58):
-                      print("--- EMERGENCY DETECTED (Radioddity) ---")
+                      emergency_received(str(int_id(_rf_src)), "RADIODDITY")
 
+            # Custom SMS detection
             if _dtype_vseq == 6 or _dtype_vseq == 'group':
                 hdr_start = str(header_ID(_data))
                 btf = ba2num(bptc_decode(_data)[65:72])
@@ -375,7 +386,7 @@ class HBSYSTEM(DatagramProtocol):
 
             if _dtype_vseq == 7 :
                 btf = btf - 1
-                print('Data block #' + str(btf)  + ' from ' + str(int_id(_rf_src)))
+
                 if _seq == 0:
                     n_packet_assembly = 0
                     packet_assembly = ''
@@ -384,11 +395,12 @@ class HBSYSTEM(DatagramProtocol):
                 packet_assembly = packet_assembly + str(bptc_decode(_data))
 
                 if btf == 0:
+                    user_agent = "MOTOROLA"
                     final_packet = str(bitarray(re.sub("\)|\(|bitarray|'", '', packet_assembly)).tobytes().decode('utf-8', 'ignore'))
                     sms_hex = str(ba2hx(bitarray(re.sub("\)|\(|bitarray|'", '', packet_assembly))))
                     sms_hex_string = re.sub("b'|'", '', str(sms_hex))
                     smsbytes = bytes.fromhex(''.join(sms_hex_string[:-8].split('00')))
-                    print(hexdump.hexdump(smsbytes))
+                    # Remove junk in Radioddity packets
                     newBytes = bytearray(b'')
                     for char in smsbytes:
                         i = 0
@@ -396,11 +408,12 @@ class HBSYSTEM(DatagramProtocol):
                             newBytes.append(char)
                             i = i + 1
                         else:
+                            user_agent = "RADIODDITY"
                             newBytes = bytearray(b'')
                             i = 0
                     sms = codecs.decode(newBytes, 'utf-8', 'ignore')
                     msg_found = re.sub('.*\n', '', sms)
-                    print('\n\n' + 'Received SMS from ' + str(int_id(_rf_src)) + ': ' + str(msg_found) + '\n')
+                    sms_received(str(int_id(_rf_src)), user_agent, msg_found)
                     n_packet_assembly = 0
                     packet_assembly = ''
                     btf = 0
