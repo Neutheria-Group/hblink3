@@ -361,19 +361,14 @@ class HBSYSTEM(DatagramProtocol):
         if call_type == call_type or (_call_type == 'vcsbk' and pckt_seq > 3 and call_type != 'unit') or (_call_type == 'group' and pckt_seq > 3 and call_type != 'unit') or (_call_type == 'group' and pckt_seq > 3 and call_type == 'both') or (_call_type == 'vcsbk' and pckt_seq > 3 and call_type == 'both') or (_call_type == 'unit' and pckt_seq > 3 and call_type == 'both'): #int.from_bytes(_seq, 'big') > 3 ):
             global packet_assembly, btf, hdr_start
             if _call_type == "vcsbk":
-                if _data[20] == 67 and _data[22] == 68 :
-                    #print("--- PROBABLE EMERGENCY DETECTED  ---")
-                    if (_data[21] == 54 or _data[21] == 82):
-                      print("--- EMERGENCY DETECTED (MOTOROLA) ---")
-                    if (_data[21] == 94 or _data[21] == 58):
-                      print("--- EMERGENCY DETECTED (Radioddity) ---")
+                print(_rf_src)
 
             if _dtype_vseq == 6 or _dtype_vseq == 'group':
                 hdr_start = str(header_ID(_data))
                 btf = ba2num(bptc_decode(_data)[65:72])
                 packet_assembly = ''
 
-            if _dtype_vseq == 7 :
+            if _dtype_vseq == 7:
                 btf = btf - 1
                 print('Data block #' + str(btf)  + ' from ' + str(int_id(_rf_src)))
                 if _seq == 0:
@@ -384,26 +379,17 @@ class HBSYSTEM(DatagramProtocol):
                 packet_assembly = packet_assembly + str(bptc_decode(_data))
 
                 if btf == 0:
+                    if '824a' in hdr_start or '024a' in hdr_start:
+                        print("Motorola SMS")
                     final_packet = str(bitarray(re.sub("\)|\(|bitarray|'", '', packet_assembly)).tobytes().decode('utf-8', 'ignore'))
                     sms_hex = str(ba2hx(bitarray(re.sub("\)|\(|bitarray|'", '', packet_assembly))))
                     sms_hex_string = re.sub("b'|'", '', str(sms_hex))
-                    smsbytes = bytes.fromhex(''.join(sms_hex_string[:-8].split('00')))
-                    print(hexdump.hexdump(smsbytes))
-                    newBytes = bytearray(b'')
-                    for char in smsbytes:
-                        i = 0
-                        if 33 <= char <= 126:
-                            newBytes.append(char)
-                            i = i + 1
-                        else:
-                            newBytes = bytearray(b'')
-                            i = 0
-                    sms = codecs.decode(newBytes, 'utf-8', 'ignore')
+                    sms = codecs.decode(bytes.fromhex(''.join(sms_hex_string[:-8].split('00'))), 'utf-8', 'ignore')
                     msg_found = re.sub('.*\n', '', sms)
                     print('\n\n' + 'Received SMS from ' + str(int_id(_rf_src)) + ': ' + str(msg_found) + '\n')
-                    n_packet_assembly = 0
-                    packet_assembly = ''
-                    btf = 0
+            #n_packet_assembly = 0
+            #packet_assembly = ''
+            #btf = 0
         pass
 
     def master_dereg(self):
